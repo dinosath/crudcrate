@@ -1,3 +1,4 @@
+use crate::fields::RelationFieldInfo;
 use convert_case::{Case, Casing};
 
 /// Hook configuration for a single operation phase (pre, body, post)
@@ -101,4 +102,6 @@ pub(crate) struct EntityFieldAnalysis<'a> {
     pub(crate) join_on_all_fields: Vec<&'a syn::Field>,
     /// Join fields that have filter/sort configuration for related entity columns
     pub(crate) join_filter_sort_configs: Vec<JoinFilterSortConfig>,
+    /// SeaORM 2.0 relation fields (HasOne, HasMany, BelongsTo)
+    pub(crate) relation_fields: Vec<RelationFieldInfo>,
 }

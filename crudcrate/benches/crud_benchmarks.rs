@@ -389,24 +389,19 @@ pub enum BenchmarkColumn {
 }
 
 impl Iden for BenchmarkColumn {
-    fn unquoted(&self, s: &mut dyn std::fmt::Write) {
-        write!(
-            s,
-            "{}",
-            match self {
-                Self::Id => "id",
-                Self::Title => "title",
-                Self::Content => "content",
-                Self::Author => "author",
-                Self::Tags => "tags",
-                Self::Published => "published",
-                Self::Category => "category",
-                Self::ViewCount => "view_count",
-                Self::Priority => "priority",
-                Self::CreatedAt => "created_at",
-            }
-        )
-        .unwrap();
+    fn unquoted(&self) -> &str {
+        match self {
+            Self::Id => "id",
+            Self::Title => "title",
+            Self::Content => "content",
+            Self::Author => "author",
+            Self::Tags => "tags",
+            Self::Published => "published",
+            Self::Category => "category",
+            Self::ViewCount => "view_count",
+            Self::Priority => "priority",
+            Self::CreatedAt => "created_at",
+        }
     }
 }
 
@@ -414,8 +409,8 @@ impl Iden for BenchmarkColumn {
 pub struct BenchmarkEntity;
 
 impl Iden for BenchmarkEntity {
-    fn unquoted(&self, s: &mut dyn std::fmt::Write) {
-        write!(s, "benchmark_posts").unwrap();
+    fn unquoted(&self) -> &str {
+        "benchmark_posts"
     }
 }
 
@@ -434,7 +429,9 @@ fn get_database_url() -> String {
 }
 
 // Helper function to set up benchmark database with various data sizes
-async fn setup_benchmark_db(record_count: usize) -> Result<DatabaseConnection, Box<dyn std::error::Error>> {
+async fn setup_benchmark_db(
+    record_count: usize,
+) -> Result<DatabaseConnection, Box<dyn std::error::Error>> {
     let database_url = get_database_url();
     let db = Database::connect(&database_url).await?;
 

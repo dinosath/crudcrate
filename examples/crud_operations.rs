@@ -21,9 +21,9 @@
 
 use async_trait::async_trait;
 use axum::Router;
+use crudcrate::{ApiError, CRUDOperations, CRUDResource, EntityToModels};
 use sea_orm::{Condition, Database, DatabaseConnection, Order, entity::prelude::*};
 use uuid::Uuid;
-use crudcrate::{ApiError, CRUDOperations, CRUDResource, EntityToModels};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, EntityToModels)]
 #[sea_orm(table_name = "products")]
@@ -134,7 +134,9 @@ impl CRUDOperations for ProductOperations {
 
         Ok(models
             .into_iter()
-            .map(|model| <Self::Resource as CRUDResource>::ListModel::from(Self::Resource::from(model)))
+            .map(|model| {
+                <Self::Resource as CRUDResource>::ListModel::from(Self::Resource::from(model))
+            })
             .collect())
     }
 
@@ -146,7 +148,8 @@ impl CRUDOperations for ProductOperations {
         let product = self.fetch_one(db, id).await?;
 
         if let Some(s3_key) = &product.image_s3_key {
-            delete_from_s3(s3_key).await
+            delete_from_s3(s3_key)
+                .await
                 .map_err(|e| ApiError::internal(format!("S3 cleanup failed: {e}"), None))?;
         }
 
@@ -167,7 +170,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let _app = Router::new()
         .nest("/products", Product::router(&db).into())
-        .route("/", axum::routing::get(|| async { "CRUD Operations Example" }));
+        .route(
+            "/",
+            axum::routing::get(|| async { "CRUD Operations Example" }),
+        );
 
     // Demo the hooks
     demo(&db).await?;
@@ -182,12 +188,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 async fn demo(db: &DatabaseConnection) -> Result<(), ApiError> {
-    let product = Product::create(db, ProductCreate {
-        name: "Laptop".to_string(),
-        price: 1000,
-        published: true,
-        image_s3_key: Some("images/laptop.jpg".to_string()),
-    }).await?;
+    let product = Product::create(
+        db,
+        ProductCreate {
+            name: "Laptop".to_string(),
+            price: 1000,
+            published: true,
+            image_s3_key: Some("images/laptop.jpg".to_string()),
+        },
+    )
+    .await?;
 
     let _fetched = Product::get_one(db, product.id).await?; // Triggers after_get_one
     Product::delete(db, product.id).await?; // Triggers S3 cleanup
@@ -196,9 +206,8 @@ async fn demo(db: &DatabaseConnection) -> Result<(), ApiError> {
 }
 
 async fn create_schema(db: &DatabaseConnection) -> Result<(), ApiError> {
-    use sea_orm::{ConnectionTrait, Statement};
-    db.execute(Statement::from_string(
-        sea_orm::DatabaseBackend::Sqlite,
+    use sea_orm::ConnectionTrait;
+    db.execute_unprepared(
         "CREATE TABLE IF NOT EXISTS products (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
@@ -206,7 +215,8 @@ async fn create_schema(db: &DatabaseConnection) -> Result<(), ApiError> {
             published BOOLEAN NOT NULL DEFAULT 0,
             image_s3_key TEXT,
             view_count INTEGER NOT NULL DEFAULT 0
-        )"
-    )).await?;
+        )",
+    )
+    .await?;
     Ok(())
 }

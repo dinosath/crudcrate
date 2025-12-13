@@ -1,5 +1,5 @@
+use ::sea_orm::{Database, DatabaseConnection, DbErr};
 use axum::Router;
-use sea_orm::{Database, DatabaseConnection, DbErr};
 use sea_orm_migration::prelude::*;
 
 // Import local test models
@@ -81,7 +81,7 @@ impl MigrationName for CreateCategoryTable {
 
 #[async_trait::async_trait]
 impl MigrationTrait for CreateCategoryTable {
-    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), sea_orm_migration::DbErr> {
         let table = Table::create()
             .table(category::Entity)
             .if_not_exists()
@@ -116,7 +116,7 @@ impl MigrationTrait for CreateCategoryTable {
         Ok(())
     }
 
-    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+    async fn down(&self, manager: &SchemaManager) -> Result<(), sea_orm_migration::DbErr> {
         manager
             .drop_table(Table::drop().table(category::Entity).to_owned())
             .await?;
@@ -135,7 +135,7 @@ impl MigrationName for CreateCustomerTable {
 
 #[async_trait::async_trait]
 impl MigrationTrait for CreateCustomerTable {
-    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), sea_orm_migration::DbErr> {
         let table = Table::create()
             .table(customer::Entity)
             .if_not_exists()
@@ -163,7 +163,7 @@ impl MigrationTrait for CreateCustomerTable {
         Ok(())
     }
 
-    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+    async fn down(&self, manager: &SchemaManager) -> Result<(), sea_orm_migration::DbErr> {
         manager
             .drop_table(Table::drop().table(customer::Entity).to_owned())
             .await?;
@@ -182,7 +182,7 @@ impl MigrationName for CreateVehicleTable {
 
 #[async_trait::async_trait]
 impl MigrationTrait for CreateVehicleTable {
-    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), sea_orm_migration::DbErr> {
         let table = Table::create()
             .table(vehicle::Entity)
             .if_not_exists()
@@ -224,7 +224,7 @@ impl MigrationTrait for CreateVehicleTable {
         Ok(())
     }
 
-    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+    async fn down(&self, manager: &SchemaManager) -> Result<(), sea_orm_migration::DbErr> {
         manager
             .drop_table(Table::drop().table(vehicle::Entity).to_owned())
             .await?;
@@ -243,7 +243,7 @@ impl MigrationName for CreateVehiclePartTable {
 
 #[async_trait::async_trait]
 impl MigrationTrait for CreateVehiclePartTable {
-    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), sea_orm_migration::DbErr> {
         let table = Table::create()
             .table(vehicle_part::Entity)
             .if_not_exists()
@@ -299,7 +299,7 @@ impl MigrationTrait for CreateVehiclePartTable {
         Ok(())
     }
 
-    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+    async fn down(&self, manager: &SchemaManager) -> Result<(), sea_orm_migration::DbErr> {
         manager
             .drop_table(Table::drop().table(vehicle_part::Entity).to_owned())
             .await?;
@@ -318,7 +318,7 @@ impl MigrationName for CreateMaintenanceRecordTable {
 
 #[async_trait::async_trait]
 impl MigrationTrait for CreateMaintenanceRecordTable {
-    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), sea_orm_migration::DbErr> {
         let table = Table::create()
             .table(maintenance_record::Entity)
             .if_not_exists()
@@ -390,7 +390,7 @@ impl MigrationTrait for CreateMaintenanceRecordTable {
         Ok(())
     }
 
-    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+    async fn down(&self, manager: &SchemaManager) -> Result<(), sea_orm_migration::DbErr> {
         manager
             .drop_table(Table::drop().table(maintenance_record::Entity).to_owned())
             .await?;

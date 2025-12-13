@@ -6,6 +6,7 @@
 use crate::attribute_parser;
 use crate::codegen::joins::get_join_config;
 use crate::fields::extraction::has_sea_orm_ignore;
+use crate::fields::relations::detect_relation_field;
 use crate::traits::crudresource::structs::{EntityFieldAnalysis, JoinFilterSortConfig};
 use proc_macro::TokenStream;
 
@@ -25,12 +26,18 @@ pub fn analyze_entity_fields(
         join_on_one_fields: Vec::new(),
         join_on_all_fields: Vec::new(),
         join_filter_sort_configs: Vec::new(),
+        relation_fields: Vec::new(),
     };
 
     let mut deprecation_errors: Vec<syn::Error> = Vec::new();
 
     for field in fields {
         let is_non_db = attribute_parser::get_crudcrate_bool(field, "non_db_attr").unwrap_or(false);
+
+        // Check for SeaORM 2.0 relation fields (HasOne, HasMany, BelongsTo)
+        if let Some(relation_info) = detect_relation_field(field) {
+            analysis.relation_fields.push(relation_info);
+        }
 
         // Check for join attributes regardless of db/non_db status
         let join_result = get_join_config(field);
@@ -47,18 +54,22 @@ pub fn analyze_entity_fields(
             }
 
             // Extract join filter/sort configuration if present
-            if !join_config.filterable_columns.is_empty() || !join_config.sortable_columns.is_empty() {
+            if !join_config.filterable_columns.is_empty()
+                || !join_config.sortable_columns.is_empty()
+            {
                 let field_name = field
                     .ident
                     .as_ref()
                     .map_or_else(|| "unknown".to_string(), std::string::ToString::to_string);
 
-                analysis.join_filter_sort_configs.push(JoinFilterSortConfig {
-                    field_name,
-                    entity_path: join_config.path.clone(),
-                    filterable_columns: join_config.filterable_columns.clone(),
-                    sortable_columns: join_config.sortable_columns.clone(),
-                });
+                analysis
+                    .join_filter_sort_configs
+                    .push(JoinFilterSortConfig {
+                        field_name,
+                        entity_path: join_config.path.clone(),
+                        filterable_columns: join_config.filterable_columns.clone(),
+                        sortable_columns: join_config.sortable_columns.clone(),
+                    });
             }
         }
 

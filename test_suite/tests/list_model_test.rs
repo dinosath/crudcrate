@@ -1,12 +1,12 @@
 // List Model Optimization Test
 // Tests list_model=false attribute for selective field visibility in list vs detail views
 
+use axum::Router;
 use axum::body::Body;
 use axum::http::Request;
-use axum::Router;
 use chrono::{DateTime, Utc};
 use crudcrate::{CRUDResource, EntityToModels};
-use sea_orm::{entity::prelude::*, Database, DatabaseConnection};
+use sea_orm::{Database, DatabaseConnection, entity::prelude::*};
 use serde_json::json;
 use tower::ServiceExt;
 use uuid::Uuid;
@@ -76,8 +76,7 @@ impl ActiveModelBehavior for ActiveModel {}
 async fn setup_products_db() -> Result<DatabaseConnection, sea_orm::DbErr> {
     let db = Database::connect("sqlite::memory:").await?;
 
-    db.execute(sea_orm::Statement::from_string(
-        db.get_database_backend(),
+    db.execute_unprepared(
         r"CREATE TABLE products (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
@@ -88,9 +87,8 @@ async fn setup_products_db() -> Result<DatabaseConnection, sea_orm::DbErr> {
             dimensions TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
-        )"
-        .to_owned(),
-    ))
+        )",
+    )
     .await?;
 
     Ok(db)

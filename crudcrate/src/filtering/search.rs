@@ -58,7 +58,7 @@ fn build_postgres_fulltext_condition(
     );
 
     // Use custom SQL expression
-    Some(SimpleExpr::Custom(search_sql))
+    Some(SimpleExpr::Custom(search_sql.into()))
 }
 
 /// Build MySQL-specific fulltext search using CONCAT and LIKE
@@ -95,7 +95,7 @@ fn build_mysql_fulltext_condition(
         "UPPER({concat_sql}) LIKE UPPER('%{escaped_query}%') ESCAPE '\\\\'"
     );
 
-    Some(SimpleExpr::Custom(search_sql))
+    Some(SimpleExpr::Custom(search_sql.into()))
 }
 
 /// Build fallback fulltext search for SQLite and other standard SQL databases
@@ -127,7 +127,7 @@ fn build_fallback_fulltext_condition(
     );
 
     // Use custom SQL expression
-    Some(SimpleExpr::Custom(like_sql))
+    Some(SimpleExpr::Custom(like_sql.into()))
 }
 
 /// Build condition for string field with LIKE queries (case-insensitive)

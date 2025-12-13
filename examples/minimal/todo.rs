@@ -5,7 +5,11 @@ use uuid::Uuid;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq, EntityToModels)]
 #[sea_orm(table_name = "todos")]
-#[crudcrate(api_struct = "Todo", description = "Simple todo management", generate_router)]
+#[crudcrate(
+    api_struct = "Todo",
+    description = "Simple todo management",
+    generate_router
+)]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     #[crudcrate(primary_key, exclude(create, update), on_create = Uuid::new_v4())]
@@ -24,19 +28,19 @@ pub enum Relation {}
 impl ActiveModelBehavior for ActiveModel {}
 
 /// Database setup for minimal example
-pub async fn setup_todo_database(database_url: &str) -> Result<DatabaseConnection, Box<dyn std::error::Error>> {
+pub async fn setup_todo_database(
+    database_url: &str,
+) -> Result<DatabaseConnection, Box<dyn std::error::Error>> {
     let db = Database::connect(database_url).await?;
 
-    db.execute(sea_orm::Statement::from_string(
-        db.get_database_backend(),
+    db.execute_unprepared(
         r"CREATE TABLE IF NOT EXISTS todos (
             id TEXT PRIMARY KEY NOT NULL,
             title TEXT NOT NULL,
             completed BOOLEAN NOT NULL,
             updated_at TEXT NOT NULL
-        );"
-        .to_owned(),
-    ))
+        );",
+    )
     .await?;
 
     Ok(db)
