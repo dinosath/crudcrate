@@ -36,7 +36,7 @@ pub mod expected_cake {
         pub name: Option<String>,
         /// HasMany relation - optional nested fruits (uses Fruit Model)
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        pub fruits: Option<Vec<super::fruit::Model>>,
+        pub fruits: Option<Vec<Box<super::fruit::Model>>>,
     }
 
     /// Expected CakeUpdate - Option<Option<T>> pattern for nullable fields
@@ -50,7 +50,7 @@ pub mod expected_cake {
         pub name: Option<Option<String>>,
         /// HasMany relation - optional nested fruits (uses Fruit Model)
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        pub fruits: Option<Vec<super::fruit::Model>>,
+        pub fruits: Option<Vec<Box<super::fruit::Model>>>,
     }
 
     /// Expected CakeList - all db columns, excludes relation fields for efficiency
@@ -117,9 +117,9 @@ pub mod expected_fruit {
         pub id: i32,
         pub name: String,
         pub cake_id: Option<i32>,
-        /// BelongsTo relation - loaded cake (uses Cake Model, boxed to avoid circular reference)
+        /// BelongsTo relation - loaded cake (uses Cake Model)
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        pub cake: Option<Box<super::cake::Model>>,
+        pub cake: Option<super::cake::Model>,
     }
 }
 
@@ -191,10 +191,10 @@ pub mod expected_cake_filling {
         pub filling_id: i32,
         /// BelongsTo relation - loaded cake (uses Cake Model)
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        pub cake: Option<Box<super::cake::Model>>,
+        pub cake: Option<super::cake::Model>,
         /// BelongsTo relation - loaded filling (uses Filling Model)
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        pub filling: Option<Box<super::filling::Model>>,
+        pub filling: Option<super::filling::Model>,
     }
 }
 
