@@ -29,15 +29,17 @@
 //!
 //! When using `EntityToModels` derive macro, relation fields are automatically transformed:
 //!
-//! - `HasOne<Entity>` in Create model becomes `Option<Box<EntityCreate>>`
-//! - `HasMany<Entity>` in Create model becomes `Option<Vec<EntityCreate>>`
-//! - `HasOne<Entity>` in Update model becomes `Option<Option<Box<EntityUpdate>>>`
-//! - `HasMany<Entity>` in Update model becomes `Option<Vec<EntityUpdate>>`
+//! - `HasOne<Entity>` in Create model becomes `Option<Box<EntityCreate>>` (for nested creation)
+//! - `HasMany<Entity>` in Create model becomes `Option<Vec<EntityCreate>>` (for nested creation)
+//! - `BelongsTo` relation in Create model becomes `Option<Box<Entity>>` (references existing entity)
+//! - `HasOne<Entity>` in Update model becomes `Option<Option<Box<EntityUpdate>>>` (for nested updates)
+//! - `HasMany<Entity>` in Update model becomes `Option<Vec<EntityUpdate>>` (for nested updates)
+//! - `BelongsTo` relation in Update model becomes `Option<Option<Box<Entity>>>` (references existing entity)
 //!
 //! # Example Usage
 //!
 //! ```ignore
-//! // Creating a user with a profile in one request:
+//! // Creating a user with nested profile and posts:
 //! let user_create = UserCreate {
 //!     name: "Alice".to_string(),
 //!     email: "alice@example.com".to_string(),
@@ -49,13 +51,24 @@
 //!         PostCreate { title: "Second Post".to_string() },
 //!     ]),
 //! };
+//!
+//! // Creating an invoice with reference to existing purchase tax series:
+//! let invoice_create = InvoiceCreate {
+//!     invoice_number: "INV-001".to_string(),
+//!     purchase_tax_series_id: Some(123),  // FK to existing entity
+//!     purchase_tax_series: Some(Box::new(PurchaseTaxSeries {
+//!         id: 123,
+//!         name: "Series A".to_string(),
+//!         // ... other fields from existing entity
+//!     })),
+//! };
 //! ```
 //!
 //! # Relation Types
 //!
-//! - **HasOne**: One-to-one relationship where this entity "has one" of another
-//! - **HasMany**: One-to-many relationship where this entity "has many" of another
-//! - **BelongsTo**: Inverse relationship (not included in Create/Update by default)
+//! - **HasOne**: One-to-one relationship where this entity "has one" of another (uses Create/Update models for nested ops)
+//! - **HasMany**: One-to-many relationship where this entity "has many" of another (uses Create/Update models for nested ops)
+//! - **BelongsTo**: Inverse relationship (uses base Model to reference existing entities)
 //! - **HasManyVia**: Many-to-many relationship via a junction table
 //! - **SelfRef**: Self-referential relationship (e.g., followers/following)
 
@@ -340,39 +353,54 @@ pub fn is_relation_field(field: &Field) -> bool {
 
 /// Check if a field should be included in create model based on relation type
 pub fn should_include_relation_in_create(info: &RelationFieldInfo) -> bool {
-    // Include HasOne and HasMany relations in create model
-    // BelongsTo typically shouldn't be included as it references the parent
+    // Include HasOne, HasMany, and BelongsTo relations in create model
     matches!(
         info.relation_type,
-        RelationType::HasOne | RelationType::HasMany | RelationType::HasManyVia { .. }
+        RelationType::HasOne | RelationType::HasMany | RelationType::BelongsTo | RelationType::HasManyVia { .. }
     )
 }
 
 /// Check if a field should be included in update model based on relation type
 pub fn should_include_relation_in_update(info: &RelationFieldInfo) -> bool {
-    // Include HasOne and HasMany relations in update model
+    // Include HasOne, HasMany, and BelongsTo relations in update model
     matches!(
         info.relation_type,
-        RelationType::HasOne | RelationType::HasMany | RelationType::HasManyVia { .. }
+        RelationType::HasOne | RelationType::HasMany | RelationType::BelongsTo | RelationType::HasManyVia { .. }
     )
 }
 
 /// Generate the create model field type for a relation
 pub fn generate_create_field_type(info: &RelationFieldInfo) -> TokenStream {
-    let model_name = syn::Ident::new(
-        &format!("{}Create", info.related_model_name),
-        proc_macro2::Span::call_site(),
-    );
-
     match info.relation_type {
-        RelationType::HasOne | RelationType::BelongsTo => {
+        RelationType::BelongsTo => {
+            // BelongsTo uses the base model (ModelEx) since it references an existing entity
+            let model_name = syn::Ident::new(
+                &info.related_model_name,
+                proc_macro2::Span::call_site(),
+            );
+            quote! { Option<Box<#model_name>> }
+        }
+        RelationType::HasOne => {
+            // HasOne uses Create model for nested creation
+            let model_name = syn::Ident::new(
+                &format!("{}Create", info.related_model_name),
+                proc_macro2::Span::call_site(),
+            );
             quote! { Option<Box<#model_name>> }
         }
         RelationType::HasMany | RelationType::HasManyVia { .. } => {
+            let model_name = syn::Ident::new(
+                &format!("{}Create", info.related_model_name),
+                proc_macro2::Span::call_site(),
+            );
             quote! { Option<Vec<#model_name>> }
         }
         RelationType::SelfRef { .. } => {
             // Self-referential relations use the same model
+            let model_name = syn::Ident::new(
+                &format!("{}Create", info.related_model_name),
+                proc_macro2::Span::call_site(),
+            );
             quote! { Option<Vec<#model_name>> }
         }
     }
@@ -380,20 +408,36 @@ pub fn generate_create_field_type(info: &RelationFieldInfo) -> TokenStream {
 
 /// Generate the update model field type for a relation
 pub fn generate_update_field_type(info: &RelationFieldInfo) -> TokenStream {
-    let model_name = syn::Ident::new(
-        &format!("{}Update", info.related_model_name),
-        proc_macro2::Span::call_site(),
-    );
-
     match info.relation_type {
-        RelationType::HasOne | RelationType::BelongsTo => {
+        RelationType::BelongsTo => {
+            // BelongsTo uses the base model (ModelEx) since it references an existing entity
+            let model_name = syn::Ident::new(
+                &info.related_model_name,
+                proc_macro2::Span::call_site(),
+            );
             // Option<Option<T>> - outer Option for "skip", inner Option for "null"
             quote! { Option<Option<Box<#model_name>>> }
         }
+        RelationType::HasOne => {
+            // HasOne uses Update model for nested updates
+            let model_name = syn::Ident::new(
+                &format!("{}Update", info.related_model_name),
+                proc_macro2::Span::call_site(),
+            );
+            quote! { Option<Option<Box<#model_name>>> }
+        }
         RelationType::HasMany | RelationType::HasManyVia { .. } => {
+            let model_name = syn::Ident::new(
+                &format!("{}Update", info.related_model_name),
+                proc_macro2::Span::call_site(),
+            );
             quote! { Option<Vec<#model_name>> }
         }
         RelationType::SelfRef { .. } => {
+            let model_name = syn::Ident::new(
+                &format!("{}Update", info.related_model_name),
+                proc_macro2::Span::call_site(),
+            );
             quote! { Option<Vec<#model_name>> }
         }
     }

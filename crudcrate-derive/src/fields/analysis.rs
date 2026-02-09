@@ -73,8 +73,16 @@ pub fn analyze_entity_fields(
             }
         }
 
+        // SeaORM 2.0 relation fields (HasOne<E>, HasMany<E>) are automatically non-DB fields
+        // They should not require #[crudcrate(non_db_attr)] annotation
+        let is_relation_field = detect_relation_field(field).is_some();
+
         if is_non_db {
             analysis.non_db_fields.push(field);
+        } else if is_relation_field {
+            // Relation fields are non-DB fields but don't require the non_db_attr annotation
+            // They are handled separately via relation_fields
+            // Don't add to non_db_fields to avoid the #[sea_orm(ignore)] validation
         } else {
             analysis.db_fields.push(field);
 
