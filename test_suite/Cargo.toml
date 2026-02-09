@@ -31,6 +31,7 @@ tower-http = { workspace = true, features = ["cors", "trace"] }
 url-escape = { workspace = true }
 async-trait = { workspace = true }
 serial_test = "3.2"
+serde_with = { workspace = true }
 
 [lints.clippy]
 pedantic = "warn"

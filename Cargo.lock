@@ -3467,6 +3467,7 @@ dependencies = [
  "sea-orm-migration",
  "serde",
  "serde_json",
+ "serde_with",
  "serial_test",
  "tokio",
  "tower",

@@ -17,10 +17,186 @@
 //! 4. Generated Response models include all entity fields
 //! 5. Serialization/deserialization works correctly
 //! 6. Conversion to ActiveModel works correctly
+//! 7. Generated models match manually defined expected models
 
-use crudcrate::EntityToModels;
 use sea_orm::entity::prelude::*;
-use serde::{Deserialize, Serialize};
+
+// ============================================================================
+// Manually Defined Expected Models
+// These are the models we expect the derive macro to generate
+// ============================================================================
+
+/// Expected models for Cake entity
+pub mod expected_cake {
+    use serde::{Deserialize, Serialize};
+
+    /// Expected CakeCreate - excludes id (primary key), includes nested relation with Model type
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct CakeCreate {
+        pub name: Option<String>,
+        /// HasMany relation - optional nested fruits (uses Fruit Model)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub fruits: Option<Vec<super::fruit::Model>>,
+    }
+
+    /// Expected CakeUpdate - Option<Option<T>> pattern for nullable fields
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+    pub struct CakeUpdate {
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "::serde_with::rust::double_option"
+        )]
+        pub name: Option<Option<String>>,
+        /// HasMany relation - optional nested fruits (uses Fruit Model)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub fruits: Option<Vec<super::fruit::Model>>,
+    }
+
+    /// Expected CakeList - all db columns, excludes relation fields for efficiency
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct CakeList {
+        pub id: i32,
+        pub name: Option<String>,
+    }
+
+    /// Expected CakeResponse - includes relation data for detail view
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct CakeResponse {
+        pub id: i32,
+        pub name: Option<String>,
+        /// HasMany relation - loaded fruits (uses Fruit Model)
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        pub fruits: Vec<super::fruit::Model>,
+        /// HasMany via relation - loaded fillings (uses Filling Model)
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        pub fillings: Vec<super::filling::Model>,
+    }
+}
+
+/// Expected models for Fruit entity
+pub mod expected_fruit {
+    use serde::{Deserialize, Serialize};
+
+    /// Expected FruitCreate - excludes id (primary key), cake relation is via FK
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct FruitCreate {
+        pub name: String,
+        /// FK for belongs_to relation
+        pub cake_id: Option<i32>,
+    }
+
+    /// Expected FruitUpdate - Option<Option<T>> pattern
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+    pub struct FruitUpdate {
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "::serde_with::rust::double_option"
+        )]
+        pub name: Option<Option<String>>,
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "::serde_with::rust::double_option"
+        )]
+        pub cake_id: Option<Option<i32>>,
+    }
+
+    /// Expected FruitList - all db columns, excludes relation fields
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct FruitList {
+        pub id: i32,
+        pub name: String,
+        pub cake_id: Option<i32>,
+    }
+
+    /// Expected FruitResponse - includes belongs_to relation data
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct FruitResponse {
+        pub id: i32,
+        pub name: String,
+        pub cake_id: Option<i32>,
+        /// BelongsTo relation - loaded cake (uses Cake Model, boxed to avoid circular reference)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub cake: Option<Box<super::cake::Model>>,
+    }
+}
+
+/// Expected models for Filling entity
+pub mod expected_filling {
+    use serde::{Deserialize, Serialize};
+
+    /// Expected FillingCreate - excludes id (primary key)
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct FillingCreate {
+        pub name: String,
+    }
+
+    /// Expected FillingUpdate - Option<Option<T>> pattern
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+    pub struct FillingUpdate {
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "::serde_with::rust::double_option"
+        )]
+        pub name: Option<Option<String>>,
+    }
+
+    /// Expected FillingList - all db columns, excludes relation fields for efficiency
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct FillingList {
+        pub id: i32,
+        pub name: String,
+    }
+
+    /// Expected FillingResponse - includes has_many via relation data
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct FillingResponse {
+        pub id: i32,
+        pub name: String,
+        /// HasMany via relation - loaded cakes (uses Cake Model)
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        pub cakes: Vec<super::cake::Model>,
+    }
+}
+
+/// Expected models for CakeFilling junction table entity
+pub mod expected_cake_filling {
+    use serde::{Deserialize, Serialize};
+
+    /// Expected CakeFillingCreate - composite PK fields included (they are FKs)
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct CakeFillingCreate {
+        pub cake_id: i32,
+        pub filling_id: i32,
+    }
+
+    /// Expected CakeFillingUpdate - empty since both fields are PKs (excluded from update)
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+    pub struct CakeFillingUpdate {}
+
+    /// Expected CakeFillingList - all db columns, excludes relation fields for efficiency
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct CakeFillingList {
+        pub cake_id: i32,
+        pub filling_id: i32,
+    }
+
+    /// Expected CakeFillingResponse - includes belongs_to relation data
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct CakeFillingResponse {
+        pub cake_id: i32,
+        pub filling_id: i32,
+        /// BelongsTo relation - loaded cake (uses Cake Model)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub cake: Option<Box<super::cake::Model>>,
+        /// BelongsTo relation - loaded filling (uses Filling Model)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub filling: Option<Box<super::filling::Model>>,
+    }
+}
 
 // ============================================================================
 // Bakery Model Definitions
@@ -888,4 +1064,437 @@ fn test_cake_list_equality() {
 
     assert_eq!(list1, list2);
     assert_ne!(list1, list3);
+}
+
+// ============================================================================
+// Comparison Tests: Generated vs Expected Models
+// These tests verify that the derive macro generates models matching our expectations
+// ============================================================================
+
+/// Compare generated CakeCreate with expected CakeCreate via JSON serialization
+#[test]
+fn test_cake_create_matches_expected() {
+    // Create instances with same data
+    let generated = cake::CakeCreate {
+        name: Some("Test Cake".to_string()),
+    };
+    let expected = expected_cake::CakeCreate {
+        name: Some("Test Cake".to_string()),
+    };
+
+    // Serialize both
+    let generated_json = serde_json::to_value(&generated).expect("Failed to serialize generated");
+    let expected_json = serde_json::to_value(&expected).expect("Failed to serialize expected");
+
+    // Compare JSON representations
+    assert_eq!(generated_json, expected_json, "CakeCreate JSON mismatch");
+
+    // Test with null name
+    let generated_null = cake::CakeCreate { name: None };
+    let expected_null = expected_cake::CakeCreate { name: None };
+    assert_eq!(
+        serde_json::to_value(&generated_null).unwrap(),
+        serde_json::to_value(&expected_null).unwrap(),
+        "CakeCreate with null name JSON mismatch"
+    );
+}
+
+/// Compare generated CakeUpdate with expected CakeUpdate via JSON serialization
+#[test]
+fn test_cake_update_matches_expected() {
+    // Test with value set
+    let generated = cake::CakeUpdate {
+        name: Some(Some("Updated".to_string())),
+    };
+    let expected = expected_cake::CakeUpdate {
+        name: Some(Some("Updated".to_string())),
+    };
+
+    let generated_json = serde_json::to_value(&generated).expect("Failed to serialize generated");
+    let expected_json = serde_json::to_value(&expected).expect("Failed to serialize expected");
+    assert_eq!(generated_json, expected_json, "CakeUpdate JSON mismatch");
+
+    // Test with null (set to null)
+    let generated_null = cake::CakeUpdate { name: Some(None) };
+    let expected_null = expected_cake::CakeUpdate { name: Some(None) };
+    assert_eq!(
+        serde_json::to_value(&generated_null).unwrap(),
+        serde_json::to_value(&expected_null).unwrap(),
+        "CakeUpdate set-to-null JSON mismatch"
+    );
+
+    // Test with no change (None)
+    let generated_no_change = cake::CakeUpdate { name: None };
+    let expected_no_change = expected_cake::CakeUpdate { name: None };
+    assert_eq!(
+        serde_json::to_value(&generated_no_change).unwrap(),
+        serde_json::to_value(&expected_no_change).unwrap(),
+        "CakeUpdate no-change JSON mismatch"
+    );
+}
+
+/// Compare generated CakeList with expected CakeList via JSON serialization
+#[test]
+fn test_cake_list_matches_expected() {
+    let generated = cake::CakeList {
+        id: 42,
+        name: Some("List Cake".to_string()),
+    };
+    let expected = expected_cake::CakeList {
+        id: 42,
+        name: Some("List Cake".to_string()),
+    };
+
+    let generated_json = serde_json::to_value(&generated).expect("Failed to serialize generated");
+    let expected_json = serde_json::to_value(&expected).expect("Failed to serialize expected");
+    assert_eq!(generated_json, expected_json, "CakeList JSON mismatch");
+}
+
+/// Compare generated CakeResponse with expected CakeResponse via JSON serialization
+#[test]
+fn test_cake_response_matches_expected() {
+    let generated = cake::CakeResponse {
+        id: 42,
+        name: Some("Response Cake".to_string()),
+    };
+    let expected = expected_cake::CakeResponse {
+        id: 42,
+        name: Some("Response Cake".to_string()),
+    };
+
+    let generated_json = serde_json::to_value(&generated).expect("Failed to serialize generated");
+    let expected_json = serde_json::to_value(&expected).expect("Failed to serialize expected");
+    assert_eq!(generated_json, expected_json, "CakeResponse JSON mismatch");
+}
+
+/// Compare generated FruitCreate with expected FruitCreate via JSON serialization
+#[test]
+fn test_fruit_create_matches_expected() {
+    let generated = fruit::FruitCreate {
+        name: "Apple".to_string(),
+        cake_id: Some(5),
+    };
+    let expected = expected_fruit::FruitCreate {
+        name: "Apple".to_string(),
+        cake_id: Some(5),
+    };
+
+    let generated_json = serde_json::to_value(&generated).expect("Failed to serialize generated");
+    let expected_json = serde_json::to_value(&expected).expect("Failed to serialize expected");
+    assert_eq!(generated_json, expected_json, "FruitCreate JSON mismatch");
+
+    // Test without cake_id
+    let generated_no_cake = fruit::FruitCreate {
+        name: "Banana".to_string(),
+        cake_id: None,
+    };
+    let expected_no_cake = expected_fruit::FruitCreate {
+        name: "Banana".to_string(),
+        cake_id: None,
+    };
+    assert_eq!(
+        serde_json::to_value(&generated_no_cake).unwrap(),
+        serde_json::to_value(&expected_no_cake).unwrap(),
+        "FruitCreate without cake_id JSON mismatch"
+    );
+}
+
+/// Compare generated FruitUpdate with expected FruitUpdate via JSON serialization
+#[test]
+fn test_fruit_update_matches_expected() {
+    let generated = fruit::FruitUpdate {
+        name: Some(Some("Updated Fruit".to_string())),
+        cake_id: Some(Some(10)),
+    };
+    let expected = expected_fruit::FruitUpdate {
+        name: Some(Some("Updated Fruit".to_string())),
+        cake_id: Some(Some(10)),
+    };
+
+    let generated_json = serde_json::to_value(&generated).expect("Failed to serialize generated");
+    let expected_json = serde_json::to_value(&expected).expect("Failed to serialize expected");
+    assert_eq!(generated_json, expected_json, "FruitUpdate JSON mismatch");
+
+    // Test setting cake_id to null
+    let generated_remove_cake = fruit::FruitUpdate {
+        name: None,
+        cake_id: Some(None),
+    };
+    let expected_remove_cake = expected_fruit::FruitUpdate {
+        name: None,
+        cake_id: Some(None),
+    };
+    assert_eq!(
+        serde_json::to_value(&generated_remove_cake).unwrap(),
+        serde_json::to_value(&expected_remove_cake).unwrap(),
+        "FruitUpdate remove cake JSON mismatch"
+    );
+}
+
+/// Compare generated FruitList with expected FruitList via JSON serialization
+#[test]
+fn test_fruit_list_matches_expected() {
+    let generated = fruit::FruitList {
+        id: 1,
+        name: "Cherry".to_string(),
+        cake_id: Some(3),
+    };
+    let expected = expected_fruit::FruitList {
+        id: 1,
+        name: "Cherry".to_string(),
+        cake_id: Some(3),
+    };
+
+    let generated_json = serde_json::to_value(&generated).expect("Failed to serialize generated");
+    let expected_json = serde_json::to_value(&expected).expect("Failed to serialize expected");
+    assert_eq!(generated_json, expected_json, "FruitList JSON mismatch");
+}
+
+/// Compare generated FruitResponse with expected FruitResponse via JSON serialization
+#[test]
+fn test_fruit_response_matches_expected() {
+    let generated = fruit::FruitResponse {
+        id: 1,
+        name: "Mango".to_string(),
+        cake_id: None,
+    };
+    let expected = expected_fruit::FruitResponse {
+        id: 1,
+        name: "Mango".to_string(),
+        cake_id: None,
+    };
+
+    let generated_json = serde_json::to_value(&generated).expect("Failed to serialize generated");
+    let expected_json = serde_json::to_value(&expected).expect("Failed to serialize expected");
+    assert_eq!(generated_json, expected_json, "FruitResponse JSON mismatch");
+}
+
+/// Compare generated FillingCreate with expected FillingCreate via JSON serialization
+#[test]
+fn test_filling_create_matches_expected() {
+    let generated = filling::FillingCreate {
+        name: "Chocolate".to_string(),
+    };
+    let expected = expected_filling::FillingCreate {
+        name: "Chocolate".to_string(),
+    };
+
+    let generated_json = serde_json::to_value(&generated).expect("Failed to serialize generated");
+    let expected_json = serde_json::to_value(&expected).expect("Failed to serialize expected");
+    assert_eq!(generated_json, expected_json, "FillingCreate JSON mismatch");
+}
+
+/// Compare generated FillingUpdate with expected FillingUpdate via JSON serialization
+#[test]
+fn test_filling_update_matches_expected() {
+    let generated = filling::FillingUpdate {
+        name: Some(Some("Vanilla".to_string())),
+    };
+    let expected = expected_filling::FillingUpdate {
+        name: Some(Some("Vanilla".to_string())),
+    };
+
+    let generated_json = serde_json::to_value(&generated).expect("Failed to serialize generated");
+    let expected_json = serde_json::to_value(&expected).expect("Failed to serialize expected");
+    assert_eq!(generated_json, expected_json, "FillingUpdate JSON mismatch");
+}
+
+/// Compare generated FillingList with expected FillingList via JSON serialization
+#[test]
+fn test_filling_list_matches_expected() {
+    let generated = filling::FillingList {
+        id: 7,
+        name: "Cream".to_string(),
+    };
+    let expected = expected_filling::FillingList {
+        id: 7,
+        name: "Cream".to_string(),
+    };
+
+    let generated_json = serde_json::to_value(&generated).expect("Failed to serialize generated");
+    let expected_json = serde_json::to_value(&expected).expect("Failed to serialize expected");
+    assert_eq!(generated_json, expected_json, "FillingList JSON mismatch");
+}
+
+/// Compare generated FillingResponse with expected FillingResponse via JSON serialization
+#[test]
+fn test_filling_response_matches_expected() {
+    let generated = filling::FillingResponse {
+        id: 7,
+        name: "Strawberry".to_string(),
+    };
+    let expected = expected_filling::FillingResponse {
+        id: 7,
+        name: "Strawberry".to_string(),
+    };
+
+    let generated_json = serde_json::to_value(&generated).expect("Failed to serialize generated");
+    let expected_json = serde_json::to_value(&expected).expect("Failed to serialize expected");
+    assert_eq!(generated_json, expected_json, "FillingResponse JSON mismatch");
+}
+
+/// Compare generated CakeFillingCreate with expected CakeFillingCreate via JSON serialization
+#[test]
+fn test_cake_filling_create_matches_expected() {
+    let generated = cake_filling::CakeFillingCreate {
+        cake_id: 1,
+        filling_id: 2,
+    };
+    let expected = expected_cake_filling::CakeFillingCreate {
+        cake_id: 1,
+        filling_id: 2,
+    };
+
+    let generated_json = serde_json::to_value(&generated).expect("Failed to serialize generated");
+    let expected_json = serde_json::to_value(&expected).expect("Failed to serialize expected");
+    assert_eq!(generated_json, expected_json, "CakeFillingCreate JSON mismatch");
+}
+
+/// Compare generated CakeFillingUpdate with expected CakeFillingUpdate via JSON serialization
+#[test]
+fn test_cake_filling_update_matches_expected() {
+    let generated = cake_filling::CakeFillingUpdate {};
+    let expected = expected_cake_filling::CakeFillingUpdate {};
+
+    let generated_json = serde_json::to_value(&generated).expect("Failed to serialize generated");
+    let expected_json = serde_json::to_value(&expected).expect("Failed to serialize expected");
+    assert_eq!(generated_json, expected_json, "CakeFillingUpdate JSON mismatch");
+}
+
+/// Compare generated CakeFillingList with expected CakeFillingList via JSON serialization
+#[test]
+fn test_cake_filling_list_matches_expected() {
+    let generated = cake_filling::CakeFillingList {
+        cake_id: 3,
+        filling_id: 4,
+    };
+    let expected = expected_cake_filling::CakeFillingList {
+        cake_id: 3,
+        filling_id: 4,
+    };
+
+    let generated_json = serde_json::to_value(&generated).expect("Failed to serialize generated");
+    let expected_json = serde_json::to_value(&expected).expect("Failed to serialize expected");
+    assert_eq!(generated_json, expected_json, "CakeFillingList JSON mismatch");
+}
+
+/// Compare generated CakeFillingResponse with expected CakeFillingResponse via JSON serialization
+#[test]
+fn test_cake_filling_response_matches_expected() {
+    let generated = cake_filling::CakeFillingResponse {
+        cake_id: 3,
+        filling_id: 4,
+    };
+    let expected = expected_cake_filling::CakeFillingResponse {
+        cake_id: 3,
+        filling_id: 4,
+    };
+
+    let generated_json = serde_json::to_value(&generated).expect("Failed to serialize generated");
+    let expected_json = serde_json::to_value(&expected).expect("Failed to serialize expected");
+    assert_eq!(generated_json, expected_json, "CakeFillingResponse JSON mismatch");
+}
+
+// ============================================================================
+// Cross-Deserialization Tests
+// Verify that JSON from expected models can be deserialized into generated models and vice versa
+// ============================================================================
+
+#[test]
+fn test_cake_create_cross_deserialization() {
+    let expected = expected_cake::CakeCreate {
+        name: Some("Cross Test".to_string()),
+    };
+    let json = serde_json::to_string(&expected).unwrap();
+
+    // Deserialize expected JSON into generated type
+    let generated: cake::CakeCreate = serde_json::from_str(&json).expect("Failed cross-deserialization");
+    assert_eq!(generated.name, expected.name);
+}
+
+#[test]
+fn test_fruit_create_cross_deserialization() {
+    let expected = expected_fruit::FruitCreate {
+        name: "Cross Fruit".to_string(),
+        cake_id: Some(99),
+    };
+    let json = serde_json::to_string(&expected).unwrap();
+
+    let generated: fruit::FruitCreate = serde_json::from_str(&json).expect("Failed cross-deserialization");
+    assert_eq!(generated.name, expected.name);
+    assert_eq!(generated.cake_id, expected.cake_id);
+}
+
+#[test]
+fn test_filling_create_cross_deserialization() {
+    let expected = expected_filling::FillingCreate {
+        name: "Cross Filling".to_string(),
+    };
+    let json = serde_json::to_string(&expected).unwrap();
+
+    let generated: filling::FillingCreate = serde_json::from_str(&json).expect("Failed cross-deserialization");
+    assert_eq!(generated.name, expected.name);
+}
+
+#[test]
+fn test_cake_filling_create_cross_deserialization() {
+    let expected = expected_cake_filling::CakeFillingCreate {
+        cake_id: 100,
+        filling_id: 200,
+    };
+    let json = serde_json::to_string(&expected).unwrap();
+
+    let generated: cake_filling::CakeFillingCreate = serde_json::from_str(&json).expect("Failed cross-deserialization");
+    assert_eq!(generated.cake_id, expected.cake_id);
+    assert_eq!(generated.filling_id, expected.filling_id);
+}
+
+#[test]
+fn test_cake_update_cross_deserialization() {
+    let expected = expected_cake::CakeUpdate {
+        name: Some(Some("Cross Update".to_string())),
+    };
+    let json = serde_json::to_string(&expected).unwrap();
+
+    let generated: cake::CakeUpdate = serde_json::from_str(&json).expect("Failed cross-deserialization");
+    assert_eq!(generated.name, expected.name);
+}
+
+#[test]
+fn test_fruit_update_cross_deserialization() {
+    let expected = expected_fruit::FruitUpdate {
+        name: Some(Some("Cross Update Fruit".to_string())),
+        cake_id: Some(None), // Set to null
+    };
+    let json = serde_json::to_string(&expected).unwrap();
+
+    let generated: fruit::FruitUpdate = serde_json::from_str(&json).expect("Failed cross-deserialization");
+    assert_eq!(generated.name, expected.name);
+    assert_eq!(generated.cake_id, expected.cake_id);
+}
+
+#[test]
+fn test_cake_list_cross_deserialization() {
+    let expected = expected_cake::CakeList {
+        id: 55,
+        name: Some("Cross List".to_string()),
+    };
+    let json = serde_json::to_string(&expected).unwrap();
+
+    let generated: cake::CakeList = serde_json::from_str(&json).expect("Failed cross-deserialization");
+    assert_eq!(generated.id, expected.id);
+    assert_eq!(generated.name, expected.name);
+}
+
+#[test]
+fn test_cake_response_cross_deserialization() {
+    let expected = expected_cake::CakeResponse {
+        id: 77,
+        name: None,
+    };
+    let json = serde_json::to_string(&expected).unwrap();
+
+    let generated: cake::CakeResponse = serde_json::from_str(&json).expect("Failed cross-deserialization");
+    assert_eq!(generated.id, expected.id);
+    assert_eq!(generated.name, expected.name);
 }
