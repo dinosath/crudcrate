@@ -34,19 +34,83 @@ fn extract_active_model_type(
             };
         }
     }
-    let ident = format_ident!("{}ActiveModel", name);
-    Ok(quote! { #ident })
+    // For SeaORM entities, when struct is named "Model" or "ModelEx", the active model is just "ActiveModel"
+    // Otherwise, it's "{Name}ActiveModel"
+    let name_str = name.to_string();
+    if name_str == "Model" || name_str == "ModelEx" {
+        Ok(quote! { ActiveModel })
+    } else {
+        let ident = format_ident!("{}ActiveModel", name);
+        Ok(quote! { #ident })
+    }
+}
+
+/// Extract the model base name for generated types.
+/// Uses `api_struct` attribute if present, falls back to table_name (singularized PascalCase), then struct name.
+fn extract_model_base_name(input: &DeriveInput) -> syn::Ident {
+    use cruet::Inflector;
+    
+    // First check for crudcrate api_struct attribute
+    if let Some(api_name) = attribute_parser::extract_api_struct_name(&input.attrs) {
+        return format_ident!("{}", api_name);
+    }
+
+    // For SeaORM Model convention: extract from table_name, singularize, and convert to PascalCase
+    // This handles both traditional "Model" structs and SeaORM 2.0 "ModelEx" structs
+    let struct_name = &input.ident;
+    let struct_name_str = struct_name.to_string();
+    if struct_name_str == "Model" || struct_name_str == "ModelEx" {
+        if let Some(table_name) = attribute_parser::extract_table_name(&input.attrs) {
+            // Singularize first (e.g., "buyers" -> "buyer"), then convert to PascalCase
+            let singular_name = table_name.to_singular();
+            let pascal_name = singular_name.to_pascal_case();
+            return format_ident!("{}", pascal_name);
+        }
+    }
+
+    // Default: use the struct name
+    struct_name.clone()
+}
+
+
+/// Check if this is a Model struct that has a ModelEx sibling (from #[sea_orm::model])
+/// In this case, we skip generating for Model since ModelEx will have the complete implementation.
+fn should_skip_model_generation(input: &DeriveInput) -> bool {
+    let struct_name = input.ident.to_string();
+    if struct_name != "Model" {
+        return false;
+    }
+
+    // Check if #[sea_orm(model_ex)] attribute is present
+    for attr in &input.attrs {
+        if attr.path().is_ident("sea_orm") {
+            if let syn::Meta::List(meta_list) = &attr.meta {
+                let tokens = meta_list.tokens.to_string();
+                if tokens.contains("model_ex") {
+                    return true;
+                }
+            }
+        }
+    }
+    false
 }
 
 
 /// Generates `<Name>Create` struct with fields not excluded by `exclude(create)`.
 /// Fields with `on_create` become `Option<T>` to allow user override.
 /// Implements `From<NameCreate>` for `ActiveModel` with automatic value generation.
-#[proc_macro_derive(ToCreateModel, attributes(crudcrate, active_model))]
+#[proc_macro_derive(ToCreateModel, attributes(crudcrate, active_model, sea_orm))]
 pub fn to_create_model(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
+
+    // Skip if this is Model with model_ex (ModelEx will be generated instead)
+    if should_skip_model_generation(&input) {
+        return TokenStream::new();
+    }
+
     let name = &input.ident;
-    let create_name = format_ident!("{}Create", name);
+    let base_name = extract_model_base_name(&input);
+    let create_name = format_ident!("{}Create", base_name);
 
     let active_model_type = match extract_active_model_type(&input, name) {
         Ok(ty) => ty,
@@ -85,11 +149,18 @@ pub fn to_create_model(input: TokenStream) -> TokenStream {
 /// Generates `<Name>Update` struct with fields not excluded by `exclude(update)`.
 /// All fields are `Option<Option<T>>` to support partial updates and explicit null.
 /// Implements `MergeIntoActiveModel` trait with `on_update` expression handling.
-#[proc_macro_derive(ToUpdateModel, attributes(crudcrate, active_model))]
+#[proc_macro_derive(ToUpdateModel, attributes(crudcrate, active_model, sea_orm))]
 pub fn to_update_model(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
+
+    // Skip if this is Model with model_ex (ModelEx will be generated instead)
+    if should_skip_model_generation(&input) {
+        return TokenStream::new();
+    }
+
     let name = &input.ident;
-    let update_name = format_ident!("{}Update", name);
+    let base_name = extract_model_base_name(&input);
+    let update_name = format_ident!("{}Update", base_name);
 
     let active_model_type = match extract_active_model_type(&input, name) {
         Ok(ty) => ty,
@@ -101,7 +172,7 @@ pub fn to_update_model(input: TokenStream) -> TokenStream {
     };
     let included_fields = crate::codegen::models::update::filter_update_fields(&fields);
     let update_struct_fields =
-        crate::codegen::models::update::generate_update_struct_fields(&included_fields);
+        crate::codegen::models::update::generate_update_struct_fields(&fields);
     let included_merge = codegen::models::merge::generate_included_merge_code(&included_fields);
     let excluded_merge = codegen::models::merge::generate_excluded_merge_code(&fields);
 
@@ -137,11 +208,18 @@ pub fn to_update_model(input: TokenStream) -> TokenStream {
 /// Generates `<Name>List` struct with fields not excluded by `exclude(list)`.
 /// Optimizes API payloads by excluding heavy fields (joins, large text) from list endpoints.
 /// Implements `From<Name>` and `From<Model>` conversions.
-#[proc_macro_derive(ToListModel, attributes(crudcrate))]
+#[proc_macro_derive(ToListModel, attributes(crudcrate, sea_orm))]
 pub fn to_list_model(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
+
+    // Skip if this is Model with model_ex (ModelEx will be generated instead)
+    if should_skip_model_generation(&input) {
+        return TokenStream::new();
+    }
+
     let name = &input.ident;
-    let list_name = format_ident!("{}List", name);
+    let base_name = extract_model_base_name(&input);
+    let list_name = format_ident!("{}List", base_name);
 
     let fields = match fields::extract_named_fields(&input) {
         Ok(f) => f,
@@ -165,6 +243,50 @@ pub fn to_list_model(input: TokenStream) -> TokenStream {
             fn from(model: #name) -> Self {
                 Self {
                     #(#list_from_assignments),*
+                }
+            }
+        }
+    };
+
+    TokenStream::from(expanded)
+}
+
+/// Generates `<Name>Response` struct with all fields for detailed single-item responses.
+/// Includes join/relation fields unlike List models which optimize for collection queries.
+/// Implements `From<Name>` for converting entity to response model.
+#[proc_macro_derive(ToResponseModel, attributes(crudcrate, sea_orm))]
+pub fn to_response_model(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+
+    // Skip if this is Model with model_ex (ModelEx will be generated instead)
+    if should_skip_model_generation(&input) {
+        return TokenStream::new();
+    }
+
+    let name = &input.ident;
+    let base_name = extract_model_base_name(&input);
+    let response_name = format_ident!("{}Response", base_name);
+
+    let fields = match fields::extract_named_fields(&input) {
+        Ok(f) => f,
+        Err(e) => return e,
+    };
+    let response_struct_fields = crate::codegen::models::response::generate_response_struct_fields(&fields, name);
+    let response_from_assignments = crate::codegen::models::response::generate_response_from_assignments(&fields);
+
+    // Always include ToSchema for Response models
+    let response_derives = quote! { Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema };
+
+    let expanded = quote! {
+        #[derive(#response_derives)]
+        pub struct #response_name {
+            #(#response_struct_fields),*
+        }
+
+        impl From<#name> for #response_name {
+            fn from(model: #name) -> Self {
+                Self {
+                    #(#response_from_assignments),*
                 }
             }
         }

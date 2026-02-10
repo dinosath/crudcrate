@@ -11,6 +11,27 @@ use crate::fields::relations::{
 };
 use quote::quote;
 
+/// Check if a field has the sea_orm(primary_key) attribute AND is auto-increment
+/// Auto-increment PKs are excluded from Create model
+/// Composite PKs (auto_increment = false) are included
+fn is_auto_increment_primary_key(field: &syn::Field) -> bool {
+    for attr in &field.attrs {
+        if attr.path().is_ident("sea_orm") {
+            if let syn::Meta::List(meta_list) = &attr.meta {
+                let tokens = meta_list.tokens.to_string();
+                if tokens.contains("primary_key") {
+                    // Check if auto_increment = false
+                    if tokens.contains("auto_increment = false") || tokens.contains("auto_increment=false") {
+                        return false; // Composite PK - should be included in Create
+                    }
+                    return true; // Default: auto-increment PK - exclude from Create
+                }
+            }
+        }
+    }
+    false
+}
+
 /// Generates the conversion lines for a create model to active model conversion
 pub(crate) fn generate_create_conversion_lines(
     fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
@@ -18,6 +39,19 @@ pub(crate) fn generate_create_conversion_lines(
     let mut conv_lines = Vec::new();
     for field in fields {
         if get_crudcrate_bool(field, "non_db_attr").unwrap_or(false) {
+            continue;
+        }
+        // Skip relation fields - they don't exist on ActiveModel
+        if detect_relation_field(field).is_some() {
+            continue;
+        }
+        // Skip auto-increment primary_key fields - they are auto-generated
+        // Composite PKs (auto_increment = false) are handled like regular fields
+        if is_auto_increment_primary_key(field) {
+            let ident = field.ident.as_ref().unwrap();
+            conv_lines.push(quote! {
+                #ident: sea_orm::ActiveValue::NotSet
+            });
             continue;
         }
         let ident = field.ident.as_ref().unwrap();
@@ -69,36 +103,44 @@ pub(crate) fn generate_create_struct_fields(
 ) -> Vec<proc_macro2::TokenStream> {
     fields
         .iter()
-        .filter(|field| should_include_in_model(field, "create_model"))
-        .map(|field| {
+        .filter_map(|field| {
             let ident = &field.ident;
             let ty = &field.ty;
 
-            // Check if this is a SeaORM 2.0 relation field
+            // Check if this is a SeaORM 2.0 relation field - handle separately
             if let Some(relation_info) = detect_relation_field(field) {
                 if should_include_relation_in_create(&relation_info) {
                     let relation_ty = generate_create_field_type(&relation_info);
-                    return quote! {
+                    // Use value_type = Object to avoid utoipa requiring ToSchema on nested Model types
+                    return Some(quote! {
+                        #[schema(value_type = Object)]
                         #[serde(default, skip_serializing_if = "Option::is_none")]
                         pub #ident: #relation_ty
-                    };
+                    });
                 }
+                // Relation field that shouldn't be included
+                return None;
+            }
+
+            // Non-relation field - check if it should be included
+            if !should_include_in_model(field, "create_model") {
+                return None;
             }
 
             if get_crudcrate_bool(field, "non_db_attr").unwrap_or(false) {
                 // Resolve type with target models (create model)
                 let final_ty =
                     resolve_field_type_with_target_models(ty, field, |create, _, _| create.clone());
-                generate_field_with_optional_default(ident.as_ref(), &final_ty, field)
+                Some(generate_field_with_optional_default(ident.as_ref(), &final_ty, field))
             } else if get_crudcrate_expr(field, "on_create").is_some() {
-                quote! {
+                Some(quote! {
                     #[serde(default)]
                     pub #ident: Option<#ty>
-                }
+                })
             } else {
-                quote! {
+                Some(quote! {
                     pub #ident: #ty
-                }
+                })
             }
         })
         .collect()

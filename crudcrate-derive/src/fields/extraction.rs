@@ -4,7 +4,7 @@
 //! including entity-level attribute parsing.
 
 use crate::attribute_parser;
-use heck::ToPascalCase;
+use cruet::Inflector;
 use proc_macro::TokenStream;
 use quote::format_ident;
 use syn::{Data, DeriveInput, Fields, Lit, Meta, parse::Parser, punctuated::Punctuated, token::Comma};
@@ -86,8 +86,11 @@ pub fn parse_entity_attributes(input: &DeriveInput, struct_name: &syn::Ident) ->
 
     let table_name = attribute_parser::extract_table_name(&input.attrs)
         .unwrap_or_else(|| struct_name.to_string());
+    // Convert table_name (e.g., "buyers") to singular PascalCase (e.g., "Buyer")
+    // First singularize, then convert to PascalCase
+    let singular_name = table_name.to_singular();
     let api_struct_name =
-        api_struct_name.unwrap_or_else(|| format_ident!("{}", table_name.to_pascal_case()));
+        api_struct_name.unwrap_or_else(|| format_ident!("{}", singular_name.to_pascal_case()));
     let active_model_path = active_model_path.unwrap_or_else(|| "ActiveModel".to_string());
 
     (api_struct_name, active_model_path)

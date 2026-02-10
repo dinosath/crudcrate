@@ -209,6 +209,29 @@ pub(crate) fn extract_table_name(attrs: &[syn::Attribute]) -> Option<String> {
     None
 }
 
+/// Extracts the api_struct name from crudcrate attributes.
+/// Looks for `#[crudcrate(api_struct = "...")]` attribute.
+pub(crate) fn extract_api_struct_name(attrs: &[syn::Attribute]) -> Option<String> {
+    for attr in attrs {
+        if attr.path().is_ident("crudcrate")
+            && let Meta::List(meta_list) = &attr.meta
+            && let Ok(metas) =
+                Punctuated::<Meta, Comma>::parse_terminated.parse2(meta_list.tokens.clone())
+        {
+            for meta in metas {
+                if let Meta::NameValue(nv) = meta
+                    && nv.path.is_ident("api_struct")
+                    && let syn::Expr::Lit(expr_lit) = &nv.value
+                    && let Lit::Str(s) = &expr_lit.lit
+                {
+                    return Some(s.value());
+                }
+            }
+        }
+    }
+    None
+}
+
 /// Given a field and a key (e.g. `"create_model"` or `"update_model"`),
 /// look for a `#[crudcrate(...)]` attribute on the field and return the boolean value
 /// associated with that key, if present.

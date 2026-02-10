@@ -229,6 +229,8 @@ fn extract_entity_from_option_type(ty: &Type) -> Option<(RelationType, TokenStre
 
 /// Extract the model name from an entity path like `super::profile::Entity`
 fn extract_model_name_from_entity_path(ty: &Type) -> String {
+    use cruet::Inflector;
+    
     if let Type::Path(type_path) = ty {
         // Look for the module name before "Entity"
         let segments: Vec<_> = type_path.path.segments.iter().collect();
@@ -238,32 +240,19 @@ fn extract_model_name_from_entity_path(ty: &Type) -> String {
             if segment.ident == "Entity" && i > 0 {
                 // The previous segment is the module name
                 let module_name = segments[i - 1].ident.to_string();
-                return to_pascal_case(&module_name);
+                return module_name.to_pascal_case();
             }
         }
 
         // Fallback: use the last segment if it's not "Entity"
         if let Some(last) = segments.last() {
             if last.ident != "Entity" {
-                return to_pascal_case(&last.ident.to_string());
+                return last.ident.to_string().to_pascal_case();
             }
         }
     }
 
     "Unknown".to_string()
-}
-
-/// Convert snake_case to PascalCase
-fn to_pascal_case(s: &str) -> String {
-    s.split('_')
-        .map(|word| {
-            let mut chars = word.chars();
-            match chars.next() {
-                None => String::new(),
-                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-            }
-        })
-        .collect()
 }
 
 /// Parse sea_orm attributes to detect relation type and foreign key info
@@ -353,92 +342,50 @@ pub fn is_relation_field(field: &Field) -> bool {
 
 /// Check if a field should be included in create model based on relation type
 pub fn should_include_relation_in_create(info: &RelationFieldInfo) -> bool {
-    // Include HasOne, HasMany, and BelongsTo relations in create model
-    matches!(
-        info.relation_type,
-        RelationType::HasOne | RelationType::HasMany | RelationType::BelongsTo | RelationType::HasManyVia { .. }
-    )
+    // Include HasMany and HasManyVia relations in Create models
+    // They use Vec<i32> to reference existing entity IDs
+    // BelongsTo/HasOne are excluded (FK field is used instead)
+    matches!(info.relation_type, RelationType::HasMany | RelationType::HasManyVia { .. })
 }
 
 /// Check if a field should be included in update model based on relation type
 pub fn should_include_relation_in_update(info: &RelationFieldInfo) -> bool {
-    // Include HasOne, HasMany, and BelongsTo relations in update model
-    matches!(
-        info.relation_type,
-        RelationType::HasOne | RelationType::HasMany | RelationType::BelongsTo | RelationType::HasManyVia { .. }
-    )
+    // Include HasMany and HasManyVia relations in Update models
+    // They use Option<Vec<i32>> to reference existing entity IDs
+    // BelongsTo/HasOne are excluded (FK field is used instead)
+    matches!(info.relation_type, RelationType::HasMany | RelationType::HasManyVia { .. })
 }
 
 /// Generate the create model field type for a relation
+/// HasMany relations use Vec<i32> (IDs) for referencing existing entities
 pub fn generate_create_field_type(info: &RelationFieldInfo) -> TokenStream {
     match info.relation_type {
-        RelationType::BelongsTo => {
-            // BelongsTo uses the base model (ModelEx) since it references an existing entity
-            let model_name = syn::Ident::new(
-                &info.related_model_name,
-                proc_macro2::Span::call_site(),
-            );
-            quote! { Option<Box<#model_name>> }
+        RelationType::BelongsTo | RelationType::HasOne => {
+            // BelongsTo/HasOne should NOT be included in Create model (FK field is used instead)
+            // Return Option<i32> as fallback
+            quote! { Option<i32> }
         }
-        RelationType::HasOne => {
-            // HasOne uses Create model for nested creation
-            let model_name = syn::Ident::new(
-                &format!("{}Create", info.related_model_name),
-                proc_macro2::Span::call_site(),
-            );
-            quote! { Option<Box<#model_name>> }
-        }
-        RelationType::HasMany | RelationType::HasManyVia { .. } => {
-            let model_name = syn::Ident::new(
-                &format!("{}Create", info.related_model_name),
-                proc_macro2::Span::call_site(),
-            );
-            quote! { Option<Vec<#model_name>> }
-        }
-        RelationType::SelfRef { .. } => {
-            // Self-referential relations use the same model
-            let model_name = syn::Ident::new(
-                &format!("{}Create", info.related_model_name),
-                proc_macro2::Span::call_site(),
-            );
-            quote! { Option<Vec<#model_name>> }
+        RelationType::HasMany | RelationType::HasManyVia { .. } | RelationType::SelfRef { .. } => {
+            // HasMany relations use Vec<i32> - list of related entity IDs
+            quote! { Option<Vec<i32>> }
         }
     }
 }
 
 /// Generate the update model field type for a relation
+/// HasMany relations use Option<Option<Vec<i32>>> for partial updates with IDs
 pub fn generate_update_field_type(info: &RelationFieldInfo) -> TokenStream {
     match info.relation_type {
-        RelationType::BelongsTo => {
-            // BelongsTo uses the base model (ModelEx) since it references an existing entity
-            let model_name = syn::Ident::new(
-                &info.related_model_name,
-                proc_macro2::Span::call_site(),
-            );
-            // Option<Option<T>> - outer Option for "skip", inner Option for "null"
-            quote! { Option<Option<Box<#model_name>>> }
+        RelationType::BelongsTo | RelationType::HasOne => {
+            // BelongsTo/HasOne should NOT be included in Update model (FK field is used instead)
+            // Return Option<Option<i32>> as fallback
+            quote! { Option<Option<i32>> }
         }
-        RelationType::HasOne => {
-            // HasOne uses Update model for nested updates
-            let model_name = syn::Ident::new(
-                &format!("{}Update", info.related_model_name),
-                proc_macro2::Span::call_site(),
-            );
-            quote! { Option<Option<Box<#model_name>>> }
-        }
-        RelationType::HasMany | RelationType::HasManyVia { .. } => {
-            let model_name = syn::Ident::new(
-                &format!("{}Update", info.related_model_name),
-                proc_macro2::Span::call_site(),
-            );
-            quote! { Option<Vec<#model_name>> }
-        }
-        RelationType::SelfRef { .. } => {
-            let model_name = syn::Ident::new(
-                &format!("{}Update", info.related_model_name),
-                proc_macro2::Span::call_site(),
-            );
-            quote! { Option<Vec<#model_name>> }
+        RelationType::HasMany | RelationType::HasManyVia { .. } | RelationType::SelfRef { .. } => {
+            // HasMany relations use Option<Option<Vec<i32>>> - list of related entity IDs
+            // Outer Option: field present in payload
+            // Inner Option: null to clear, Some(vec) to set
+            quote! { Option<Option<Vec<i32>>> }
         }
     }
 }
@@ -446,14 +393,16 @@ pub fn generate_update_field_type(info: &RelationFieldInfo) -> TokenStream {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cruet::Inflector;
     use syn::parse_quote;
 
     #[test]
-    fn test_to_pascal_case() {
-        assert_eq!(to_pascal_case("user"), "User");
-        assert_eq!(to_pascal_case("user_profile"), "UserProfile");
-        assert_eq!(to_pascal_case("vehicle_part"), "VehiclePart");
-        assert_eq!(to_pascal_case("maintenance_record"), "MaintenanceRecord");
+    fn test_cruet_pascal_case() {
+        // Test that cruet's to_pascal_case works as expected
+        assert_eq!("user".to_pascal_case(), "User");
+        assert_eq!("user_profile".to_pascal_case(), "UserProfile");
+        assert_eq!("vehicle_part".to_pascal_case(), "VehiclePart");
+        assert_eq!("maintenance_record".to_pascal_case(), "MaintenanceRecord");
     }
 
     #[test]

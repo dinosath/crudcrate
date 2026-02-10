@@ -9,32 +9,41 @@ use crate::fields::relations::{
 };
 use quote::quote;
 
-/// Generates the field declarations for an update struct
+/// Generates the field declarations for an update struct, including relation fields
 pub(crate) fn generate_update_struct_fields(
-    included_fields: &[&syn::Field],
+    fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
 ) -> Vec<proc_macro2::TokenStream> {
-    included_fields
+    fields
         .iter()
-        .map(|field| {
+        .filter_map(|field| {
             let ident = &field.ident;
             let ty = &field.ty;
 
-            // Check if this is a SeaORM 2.0 relation field
+            // Check if this is a SeaORM 2.0 relation field - handle separately
             if let Some(relation_info) = detect_relation_field(field) {
                 if should_include_relation_in_update(&relation_info) {
                     let relation_ty = generate_update_field_type(&relation_info);
-                    return quote! {
+                    // Use value_type = Object to avoid utoipa requiring ToSchema on nested Model types
+                    return Some(quote! {
+                        #[schema(value_type = Object)]
                         #[serde(default, skip_serializing_if = "Option::is_none")]
                         pub #ident: #relation_ty
-                    };
+                    });
                 }
+                // Relation field that shouldn't be included
+                return None;
+            }
+
+            // Non-relation field - check if it should be included
+            if !should_include_in_model(field, "update_model") {
+                return None;
             }
 
             if get_crudcrate_bool(field, "non_db_attr").unwrap_or(false) {
                 // Resolve type with target models (update model)
                 let final_ty =
                     resolve_field_type_with_target_models(ty, field, |_, update, _| update.clone());
-                generate_field_with_optional_default(ident.as_ref(), &final_ty, field)
+                Some(generate_field_with_optional_default(ident.as_ref(), &final_ty, field))
             } else {
                 // Extract inner type from Option<T> - inline replacement for extract_inner_type_for_update
                 let inner_ty = if let syn::Type::Path(type_path) = ty
@@ -47,26 +56,32 @@ pub(crate) fn generate_update_struct_fields(
                 } else {
                     ty.clone()
                 };
-                quote! {
+                Some(quote! {
                     #[serde(
                         default,
                         skip_serializing_if = "Option::is_none",
                         with = "crudcrate::serde_with::rust::double_option"
                     )]
                     pub #ident: Option<Option<#inner_ty>>
-                }
+                })
             }
         })
         .collect()
 }
 
-/// Filters fields that should be included in update model
+/// Filters fields that should be included in update model (excluding relation fields)
 pub(crate) fn filter_update_fields(
     fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
 ) -> Vec<&syn::Field> {
     fields
         .iter()
-        .filter(|field| should_include_in_model(field, "update_model"))
+        .filter(|field| {
+            // Skip relation fields - they're handled by generate_update_struct_fields
+            if detect_relation_field(field).is_some() {
+                return false;
+            }
+            should_include_in_model(field, "update_model")
+        })
         .collect()
 }
 

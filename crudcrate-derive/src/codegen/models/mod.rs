@@ -11,11 +11,65 @@ use crate::attribute_parser::get_crudcrate_bool;
 use crate::codegen::joins::get_join_config;
 use crate::fields::relations::is_relation_field;
 
+/// Check if a field is an auto-increment primary key
+/// Auto-increment PKs are excluded from Create/Update models
+/// Composite PKs (auto_increment = false) are included in Create model
+fn is_auto_increment_primary_key(field: &syn::Field) -> bool {
+    for attr in &field.attrs {
+        if attr.path().is_ident("sea_orm") {
+            if let syn::Meta::List(meta_list) = &attr.meta {
+                let tokens = meta_list.tokens.to_string();
+                if tokens.contains("primary_key") {
+                    // Check if auto_increment = false - these should be included
+                    if tokens.contains("auto_increment = false") || tokens.contains("auto_increment=false") {
+                        return false; // Composite PK - not auto-increment
+                    }
+                    return true; // Default: auto-increment PK
+                }
+            }
+        }
+    }
+    false
+}
+
+/// Check if a field is any type of primary key (auto-increment or composite)
+fn is_any_primary_key(field: &syn::Field) -> bool {
+    for attr in &field.attrs {
+        if attr.path().is_ident("sea_orm") {
+            if let syn::Meta::List(meta_list) = &attr.meta {
+                let tokens = meta_list.tokens.to_string();
+                if tokens.contains("primary_key") {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
 /// Shared field filtering logic for model generation
 /// Determines if a field should be included in a specific model type
 pub(crate) fn should_include_in_model(field: &syn::Field, model_type: &str) -> bool {
     // Check the model-specific attribute (create_model, update_model, list_model)
     let include_in_model = get_crudcrate_bool(field, model_type).unwrap_or(true);
+
+    // Handle primary key fields based on model type
+    match model_type {
+        "create_model" => {
+            // Only exclude auto-increment PKs from Create
+            // Composite PKs (auto_increment = false) are included
+            if is_auto_increment_primary_key(field) {
+                return false;
+            }
+        }
+        "update_model" => {
+            // Exclude ALL primary keys from Update (both auto-increment and composite)
+            if is_any_primary_key(field) {
+                return false;
+            }
+        }
+        _ => {}
+    }
 
     // SeaORM 2.0 relation fields (HasOne, HasMany) are handled separately
     // They should not be included through the normal field generation path

@@ -35,3 +35,6 @@ serde_with = { workspace = true }
 
 [lints.clippy]
 pedantic = "warn"
+
+[dev-dependencies]
+cruet.workspace = true
