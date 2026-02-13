@@ -16,6 +16,7 @@ pub(crate) fn generate_list_and_response_models(
     api_struct_name: &syn::Ident,
     struct_name: &syn::Ident,
     field_analysis: &EntityFieldAnalysis,
+    skip_utoipa: bool,
 ) -> (proc_macro2::TokenStream, proc_macro2::TokenStream) {
     // Generate List model
     let list_name = format_ident!("{}List", api_struct_name);
@@ -33,8 +34,11 @@ pub(crate) fn generate_list_and_response_models(
     let list_from_model_assignments =
         crate::codegen::models::list::generate_list_from_model_assignments(field_analysis);
 
-    let list_derives =
-        quote! { Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema };
+    let list_derives = if skip_utoipa {
+        quote! { Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize }
+    } else {
+        quote! { Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema }
+    };
 
     let list_model = quote! {
         #[derive(#list_derives)]
@@ -62,12 +66,15 @@ pub(crate) fn generate_list_and_response_models(
     // Generate Response model
     let response_name = format_ident!("{}Response", api_struct_name);
     let response_struct_fields =
-        crate::codegen::models::response::generate_response_struct_fields(&raw_fields, api_struct_name);
+        crate::codegen::models::response::generate_response_struct_fields(&raw_fields, api_struct_name, skip_utoipa);
     let response_from_assignments =
         crate::codegen::models::response::generate_response_from_assignments(&raw_fields);
 
-    let response_derives =
-        quote! { Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema };
+    let response_derives = if skip_utoipa {
+        quote! { Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize }
+    } else {
+        quote! { Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema }
+    };
 
     let response_model = quote! {
         #[derive(#response_derives)]

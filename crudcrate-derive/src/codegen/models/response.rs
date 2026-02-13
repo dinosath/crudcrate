@@ -79,6 +79,7 @@ pub(crate) fn generate_response_from_assignments(
 pub(crate) fn generate_response_struct_fields(
     fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
     api_struct_name: &syn::Ident,
+    skip_utoipa: bool,
 ) -> Vec<proc_macro2::TokenStream> {
     fields
         .iter()
@@ -123,8 +124,15 @@ pub(crate) fn generate_response_struct_fields(
                     }
                 };
 
+                // Add schema attribute only if not skipping utoipa
+                let schema_attr = if skip_utoipa {
+                    quote! {}
+                } else {
+                    quote! { #[schema(value_type = Object)] }
+                };
+
                 return quote! {
-                    #[schema(value_type = Object)]
+                    #schema_attr
                     #serde_attr
                     pub #ident: #response_ty
                 };
@@ -143,8 +151,8 @@ pub(crate) fn generate_response_struct_fields(
             let is_join_field = get_join_config(field).is_some();
 
             // Add schema(no_recursion) for self-referencing or join fields to prevent
-            // infinite recursion in OpenAPI schema generation
-            let schema_attr = if is_self_referencing || is_join_field {
+            // infinite recursion in OpenAPI schema generation (only if not skipping utoipa)
+            let schema_attr = if !skip_utoipa && (is_self_referencing || is_join_field) {
                 Some(quote! {
                     #[schema(no_recursion)]
                 })

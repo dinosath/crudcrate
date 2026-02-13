@@ -16,9 +16,10 @@ full = ["derive", "dep:async-trait", "dep:axum", "dep:hyper", "dep:sea-orm", "de
 # Minimal feature: only derive macros (ToCreateModel, ToUpdateModel, ToListModel, ToResponseModel)
 # No runtime dependencies - generated code works with sea-orm, serde, serde_with only
 derive = ["crudcrate-derive"]
-mysql = ["sea-orm/sqlx-mysql"]
-postgresql = ["sea-orm/sqlx-postgres"]
-sqlite = ["sea-orm/sqlx-sqlite"]
+# Database features (require full runtime)
+mysql = ["full", "sea-orm/sqlx-mysql"]
+postgresql = ["full", "sea-orm/sqlx-postgres"]
+sqlite = ["full", "sea-orm/sqlx-sqlite"]
 spring-rs = ["spring", "spring-web", "full"]
 
 [dependencies]

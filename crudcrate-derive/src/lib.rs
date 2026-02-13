@@ -278,7 +278,7 @@ pub fn to_response_model(input: TokenStream) -> TokenStream {
         Err(e) => return e,
     };
     let skip_utoipa = attribute_parser::get_struct_crudcrate_bool(&input.attrs, "skip_utoipa").unwrap_or(false);
-    let response_struct_fields = crate::codegen::models::response::generate_response_struct_fields(&fields, name);
+    let response_struct_fields = crate::codegen::models::response::generate_response_struct_fields(&fields, name, skip_utoipa);
     let response_from_assignments = crate::codegen::models::response::generate_response_from_assignments(&fields);
 
     // Conditionally include ToSchema for Response models
@@ -430,6 +430,7 @@ pub fn entity_to_models(input: TokenStream) -> TokenStream {
             &api_struct_name,
             struct_name,
             &field_analysis,
+            crud_meta.skip_utoipa,
         );
 
     // Generate final output
