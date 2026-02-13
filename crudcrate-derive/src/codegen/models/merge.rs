@@ -35,12 +35,7 @@ pub(crate) fn generate_included_merge_code(
                 quote! {
                     model.#ident = match self.#ident {
                         Some(Some(value)) => sea_orm::ActiveValue::Set(value.into()),
-                        Some(None) => {
-                            return Err(crudcrate::ApiError::bad_request(format!(
-                                "Field '{}' is required and cannot be set to null",
-                                stringify!(#ident)
-                            )));
-                        },
+                        Some(None) => return Err(format!("Field '{}' is required and cannot be set to null", stringify!(#ident))),
                         None => sea_orm::ActiveValue::NotSet,
                     };
                 }

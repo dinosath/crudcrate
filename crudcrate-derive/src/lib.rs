@@ -120,13 +120,16 @@ pub fn to_create_model(input: TokenStream) -> TokenStream {
         Ok(f) => f,
         Err(e) => return e,
     };
-    let create_struct_fields = codegen::models::create::generate_create_struct_fields(&fields);
+    let skip_utoipa = attribute_parser::get_struct_crudcrate_bool(&input.attrs, "skip_utoipa").unwrap_or(false);
+    let create_struct_fields = codegen::models::create::generate_create_struct_fields(&fields, skip_utoipa);
     let conv_lines = codegen::models::create::generate_create_conversion_lines(&fields);
 
-    // Always include ToSchema for Create models
-    // Circular dependencies are handled by schema(no_recursion) on join fields in the main model
-    let create_derives =
-        quote! { Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema };
+    // Conditionally include ToSchema for Create models
+    let create_derives = if skip_utoipa {
+        quote! { Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize }
+    } else {
+        quote! { Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema }
+    };
 
     let expanded = quote! {
         #[derive(#create_derives)]
@@ -170,16 +173,19 @@ pub fn to_update_model(input: TokenStream) -> TokenStream {
         Ok(f) => f,
         Err(e) => return e,
     };
+    let skip_utoipa = attribute_parser::get_struct_crudcrate_bool(&input.attrs, "skip_utoipa").unwrap_or(false);
     let included_fields = crate::codegen::models::update::filter_update_fields(&fields);
     let update_struct_fields =
-        crate::codegen::models::update::generate_update_struct_fields(&fields);
+        crate::codegen::models::update::generate_update_struct_fields(&fields, skip_utoipa);
     let included_merge = codegen::models::merge::generate_included_merge_code(&included_fields);
     let excluded_merge = codegen::models::merge::generate_excluded_merge_code(&fields);
 
-    // Always include ToSchema for Update models
-    // Circular dependencies are handled by schema(no_recursion) on join fields in the main model
-    let update_derives =
-        quote! { Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema };
+    // Conditionally include ToSchema for Update models
+    let update_derives = if skip_utoipa {
+        quote! { Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize }
+    } else {
+        quote! { Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema }
+    };
 
     let expanded = quote! {
         #[derive(#update_derives)]
@@ -188,16 +194,12 @@ pub fn to_update_model(input: TokenStream) -> TokenStream {
         }
 
         impl #update_name {
-            pub fn merge_fields(self, mut model: #active_model_type) -> Result<#active_model_type, crudcrate::ApiError> {
+            /// Merge update fields into an ActiveModel.
+            /// Returns the modified ActiveModel or an error if a required field is set to null.
+            pub fn merge_into(self, mut model: #active_model_type) -> Result<#active_model_type, String> {
                 #(#included_merge)*
                 #(#excluded_merge)*
                 Ok(model)
-            }
-        }
-
-        impl crudcrate::traits::MergeIntoActiveModel<#active_model_type> for #update_name {
-            fn merge_into_activemodel(self, model: #active_model_type) -> Result<#active_model_type, crudcrate::ApiError> {
-                Self::merge_fields(self, model)
             }
         }
     };
@@ -225,13 +227,17 @@ pub fn to_list_model(input: TokenStream) -> TokenStream {
         Ok(f) => f,
         Err(e) => return e,
     };
+    let skip_utoipa = attribute_parser::get_struct_crudcrate_bool(&input.attrs, "skip_utoipa").unwrap_or(false);
     let list_struct_fields = crate::codegen::models::list::generate_list_struct_fields(&fields);
     let list_from_assignments =
         crate::codegen::models::list::generate_list_from_assignments(&fields);
 
-    // Always include ToSchema for List models
-    // Circular dependencies are handled by schema(no_recursion) on join fields in the main model
-    let list_derives = quote! { Clone, serde::Serialize, serde::Deserialize, utoipa::ToSchema };
+    // Conditionally include ToSchema for List models
+    let list_derives = if skip_utoipa {
+        quote! { Clone, serde::Serialize, serde::Deserialize }
+    } else {
+        quote! { Clone, serde::Serialize, serde::Deserialize, utoipa::ToSchema }
+    };
 
     let expanded = quote! {
         #[derive(#list_derives)]
@@ -271,11 +277,16 @@ pub fn to_response_model(input: TokenStream) -> TokenStream {
         Ok(f) => f,
         Err(e) => return e,
     };
+    let skip_utoipa = attribute_parser::get_struct_crudcrate_bool(&input.attrs, "skip_utoipa").unwrap_or(false);
     let response_struct_fields = crate::codegen::models::response::generate_response_struct_fields(&fields, name);
     let response_from_assignments = crate::codegen::models::response::generate_response_from_assignments(&fields);
 
-    // Always include ToSchema for Response models
-    let response_derives = quote! { Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema };
+    // Conditionally include ToSchema for Response models
+    let response_derives = if skip_utoipa {
+        quote! { Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize }
+    } else {
+        quote! { Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema }
+    };
 
     let expanded = quote! {
         #[derive(#response_derives)]

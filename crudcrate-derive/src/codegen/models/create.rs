@@ -100,6 +100,7 @@ pub(crate) fn generate_create_conversion_lines(
 
 pub(crate) fn generate_create_struct_fields(
     fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
+    skip_utoipa: bool,
 ) -> Vec<proc_macro2::TokenStream> {
     fields
         .iter()
@@ -112,11 +113,18 @@ pub(crate) fn generate_create_struct_fields(
                 if should_include_relation_in_create(&relation_info) {
                     let relation_ty = generate_create_field_type(&relation_info);
                     // Use value_type = Object to avoid utoipa requiring ToSchema on nested Model types
-                    return Some(quote! {
-                        #[schema(value_type = Object)]
-                        #[serde(default, skip_serializing_if = "Option::is_none")]
-                        pub #ident: #relation_ty
-                    });
+                    return if skip_utoipa {
+                        Some(quote! {
+                            #[serde(default, skip_serializing_if = "Option::is_none")]
+                            pub #ident: #relation_ty
+                        })
+                    } else {
+                        Some(quote! {
+                            #[schema(value_type = Object)]
+                            #[serde(default, skip_serializing_if = "Option::is_none")]
+                            pub #ident: #relation_ty
+                        })
+                    };
                 }
                 // Relation field that shouldn't be included
                 return None;

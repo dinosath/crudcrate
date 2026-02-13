@@ -19,7 +19,7 @@
 //! 6. Conversion to ActiveModel works correctly
 //! 7. Generated models match manually defined expected models
 
-use crudcrate::{MergeIntoActiveModel, ToCreateModel, ToUpdateModel, ToResponseModel};
+use crudcrate::{ToCreateModel, ToUpdateModel, ToResponseModel};
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -752,7 +752,7 @@ fn test_cake_filling_create_to_active_model() {
 }
 
 // ============================================================================
-// Conversion Tests (Update -> ActiveModel via MergeIntoActiveModel)
+// Conversion Tests (Update -> ActiveModel via merge_into)
 // ============================================================================
 
 #[test]
@@ -765,7 +765,7 @@ fn test_cake_update_to_active_model() {
 
     // Start with a default ActiveModel
     let existing = <cake::ActiveModel as std::default::Default>::default();
-    let active_model = update.merge_into_activemodel(existing).expect("Failed to merge");
+    let active_model = update.merge_into(existing).expect("merge failed");
 
     match &active_model.name {
         sea_orm::ActiveValue::Set(name) => assert_eq!(name, &Some("Updated Cake".to_string())),
@@ -782,7 +782,7 @@ fn test_cake_update_to_active_model_set_null() {
     };
 
     let existing = <cake::ActiveModel as std::default::Default>::default();
-    let active_model = update.merge_into_activemodel(existing).expect("Failed to merge");
+    let active_model = update.merge_into(existing).expect("merge failed");
 
     match &active_model.name {
         sea_orm::ActiveValue::Set(name) => assert_eq!(name, &None),
@@ -799,7 +799,7 @@ fn test_cake_update_to_active_model_no_change() {
     };
 
     let existing = <cake::ActiveModel as std::default::Default>::default();
-    let active_model = update.merge_into_activemodel(existing).expect("Failed to merge");
+    let active_model = update.merge_into(existing).expect("merge failed");
 
     match &active_model.name {
         sea_orm::ActiveValue::NotSet => {} // Expected - no change means NotSet
@@ -816,7 +816,7 @@ fn test_fruit_update_to_active_model() {
     };
 
     let existing = <fruit::ActiveModel as std::default::Default>::default();
-    let active_model = update.merge_into_activemodel(existing).expect("Failed to merge");
+    let active_model = update.merge_into(existing).expect("merge failed");
 
     match &active_model.name {
         sea_orm::ActiveValue::Set(name) => assert_eq!(name, "Updated Fruit"),
@@ -837,7 +837,7 @@ fn test_fruit_update_to_active_model_remove_cake() {
     };
 
     let existing = <fruit::ActiveModel as std::default::Default>::default();
-    let active_model = update.merge_into_activemodel(existing).expect("Failed to merge");
+    let active_model = update.merge_into(existing).expect("merge failed");
 
     match &active_model.name {
         sea_orm::ActiveValue::NotSet => {} // Expected - no change
@@ -858,7 +858,7 @@ fn test_filling_update_to_active_model() {
     };
 
     let existing = <filling::ActiveModel as std::default::Default>::default();
-    let active_model = update.merge_into_activemodel(existing).expect("Failed to merge");
+    let active_model = update.merge_into(existing).expect("merge failed");
 
     match &active_model.name {
         sea_orm::ActiveValue::Set(name) => assert_eq!(name, "Updated Filling"),
@@ -872,7 +872,7 @@ fn test_cake_filling_update_to_active_model() {
     let update = cake_filling::CakeFillingUpdate {};
 
     let existing = <cake_filling::ActiveModel as std::default::Default>::default();
-    let active_model = update.merge_into_activemodel(existing).expect("Failed to merge");
+    let active_model = update.merge_into(existing).expect("merge failed");
 
     // Both fields should be NotSet since they're PKs and not in the update
     match &active_model.cake_id {
@@ -1808,3 +1808,132 @@ fn test_snake_case_update_model_exists() {
     };
 }
 
+// ============================================================================
+// Skip Utoipa Tests
+// Verifies that #[crudcrate(skip_utoipa)] excludes utoipa::ToSchema from derives
+// ============================================================================
+
+/// Entity with skip_utoipa - should NOT derive utoipa::ToSchema
+pub mod no_utoipa_entity {
+    use crudcrate::{ToCreateModel, ToUpdateModel, ToResponseModel};
+    use sea_orm::entity::prelude::*;
+    use serde::{Deserialize, Serialize};
+
+    #[sea_orm::model]
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, DeriveEntityModel, ToCreateModel, ToUpdateModel, ToResponseModel)]
+    #[sea_orm(table_name = "no_utoipa_items")]
+    #[crudcrate(skip_utoipa)]
+    pub struct Model {
+        #[sea_orm(primary_key)]
+        pub id: i32,
+        pub name: String,
+        pub description: Option<String>,
+        pub quantity: i32,
+    }
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+/// Test that skip_utoipa models compile and work correctly
+#[test]
+fn test_skip_utoipa_create_model_exists() {
+    let create = no_utoipa_entity::NoUtoipaItemCreate {
+        name: "Test Item".to_string(),
+        description: Some("A test item".to_string()),
+        quantity: 10,
+    };
+    
+    // Verify serialization still works
+    let json = serde_json::to_string(&create).expect("Failed to serialize");
+    let parsed: no_utoipa_entity::NoUtoipaItemCreate = serde_json::from_str(&json).expect("Failed to deserialize");
+    assert_eq!(parsed.name, create.name);
+    assert_eq!(parsed.quantity, create.quantity);
+}
+
+#[test]
+fn test_skip_utoipa_update_model_exists() {
+    let update = no_utoipa_entity::NoUtoipaItemUpdate {
+        name: Some(Some("Updated Name".to_string())),
+        description: Some(None), // Set to null
+        quantity: Some(Some(20)),
+    };
+    
+    // Verify serialization still works
+    let json = serde_json::to_string(&update).expect("Failed to serialize");
+    let parsed: no_utoipa_entity::NoUtoipaItemUpdate = serde_json::from_str(&json).expect("Failed to deserialize");
+    assert_eq!(parsed.name, update.name);
+    assert_eq!(parsed.quantity, update.quantity);
+}
+
+#[test]
+fn test_skip_utoipa_response_model_exists() {
+    let response = no_utoipa_entity::NoUtoipaItemResponse {
+        id: 1,
+        name: "Response Item".to_string(),
+        description: None,
+        quantity: 5,
+    };
+    
+    // Verify serialization still works
+    let json = serde_json::to_string(&response).expect("Failed to serialize");
+    let parsed: no_utoipa_entity::NoUtoipaItemResponse = serde_json::from_str(&json).expect("Failed to deserialize");
+    assert_eq!(parsed.id, response.id);
+    assert_eq!(parsed.name, response.name);
+}
+
+#[test]
+fn test_skip_utoipa_create_to_active_model() {
+    let create = no_utoipa_entity::NoUtoipaItemCreate {
+        name: "Convert Test".to_string(),
+        description: Some("Testing conversion".to_string()),
+        quantity: 100,
+    };
+    
+    let active_model: no_utoipa_entity::ActiveModel = create.into();
+    
+    match &active_model.name {
+        sea_orm::ActiveValue::Set(name) => assert_eq!(name, "Convert Test"),
+        _ => panic!("Expected name to be Set"),
+    }
+    match &active_model.quantity {
+        sea_orm::ActiveValue::Set(qty) => assert_eq!(qty, &100),
+        _ => panic!("Expected quantity to be Set"),
+    }
+}
+
+#[test]
+fn test_skip_utoipa_model_ex_to_response() {
+    let model = no_utoipa_entity::ModelEx {
+        id: 42,
+        name: "Model Ex".to_string(),
+        description: Some("From ModelEx".to_string()),
+        quantity: 7,
+    };
+    
+    let response: no_utoipa_entity::NoUtoipaItemResponse = model.into();
+    
+    assert_eq!(response.id, 42);
+    assert_eq!(response.name, "Model Ex");
+    assert_eq!(response.description, Some("From ModelEx".to_string()));
+    assert_eq!(response.quantity, 7);
+}
+
+/// Verify skip_utoipa models still have standard derives (Clone, Debug, PartialEq, Serialize, Deserialize)
+#[test]
+fn test_skip_utoipa_standard_derives() {
+    // Clone
+    let create = no_utoipa_entity::NoUtoipaItemCreate {
+        name: "Clone Test".to_string(),
+        description: None,
+        quantity: 1,
+    };
+    let _cloned = create.clone();
+    
+    // Debug
+    let debug_str = format!("{:?}", create);
+    assert!(debug_str.contains("Clone Test"));
+    
+    // PartialEq
+    let create2 = create.clone();
+    assert_eq!(create, create2);
+}

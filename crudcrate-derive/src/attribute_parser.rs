@@ -41,6 +41,7 @@ pub(crate) fn parse_crud_resource_meta(attrs: &[syn::Attribute]) -> CRUDResource
                                         Some("generate_router") => meta.generate_router = value,
                                         Some("derive_partial_eq") => meta.derive_partial_eq = value,
                                         Some("derive_eq") => meta.derive_eq = value,
+                                        Some("skip_utoipa") => meta.skip_utoipa = value,
                                         _ => {}
                                     }
                                 }
@@ -90,6 +91,7 @@ pub(crate) fn parse_crud_resource_meta(attrs: &[syn::Attribute]) -> CRUDResource
                             Some("derive_eq") => meta.derive_eq = true,
                             Some("no_partial_eq") => meta.derive_partial_eq = false,
                             Some("no_eq") => meta.derive_eq = false,
+                            Some("skip_utoipa") => meta.skip_utoipa = true,
                             _ => {}
                         }
                     }
@@ -225,6 +227,37 @@ pub(crate) fn extract_api_struct_name(attrs: &[syn::Attribute]) -> Option<String
                     && let Lit::Str(s) = &expr_lit.lit
                 {
                     return Some(s.value());
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Check if a struct-level crudcrate attribute has a boolean flag set.
+/// Looks for `#[crudcrate(key)]` or `#[crudcrate(key = true/false)]`
+pub(crate) fn get_struct_crudcrate_bool(attrs: &[syn::Attribute], key: &str) -> Option<bool> {
+    for attr in attrs {
+        if attr.path().is_ident("crudcrate")
+            && let Meta::List(meta_list) = &attr.meta
+            && let Ok(metas) =
+                Punctuated::<Meta, Comma>::parse_terminated.parse2(meta_list.tokens.clone())
+        {
+            for meta in metas {
+                match &meta {
+                    // Explicit boolean: key = true/false
+                    Meta::NameValue(nv) if nv.path.is_ident(key) => {
+                        if let syn::Expr::Lit(expr_lit) = &nv.value
+                            && let Lit::Bool(b) = &expr_lit.lit
+                        {
+                            return Some(b.value());
+                        }
+                    }
+                    // Implicit boolean flag: just `key` means true
+                    Meta::Path(path) if path.is_ident(key) => {
+                        return Some(true);
+                    }
+                    _ => {}
                 }
             }
         }

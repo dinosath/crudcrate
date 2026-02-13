@@ -39,6 +39,7 @@ pub(crate) struct CRUDResourceMeta {
     pub(crate) fulltext_language: Option<String>,
     pub(crate) derive_partial_eq: bool,
     pub(crate) derive_eq: bool,
+    pub(crate) skip_utoipa: bool,
     // Deprecation errors to emit as compile errors
     pub(crate) deprecation_errors: Vec<syn::Error>,
 }

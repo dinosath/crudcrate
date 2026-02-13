@@ -55,6 +55,13 @@ pub(crate) fn generate_crud_resource_impl(
     };
 
     quote! {
+        // Implement MergeIntoActiveModel trait by delegating to the generated merge_into method
+        impl crudcrate::MergeIntoActiveModel<#active_model_type> for #update_model_name {
+            fn merge_into_activemodel(self, model: #active_model_type) -> Result<#active_model_type, crudcrate::ApiError> {
+                self.merge_into(model).map_err(crudcrate::ApiError::bad_request)
+            }
+        }
+
         #[async_trait::async_trait]
         impl crudcrate::CRUDResource for #api_struct_name {
             type EntityType = #entity_type;
