@@ -191,12 +191,15 @@
 //!
 //! ## Feature Flags
 //!
-//! - **`derive`**: Enables procedural macros (default)
-//! - **`debug`**: Shows generated code during compilation
+//! - **`full`**: Complete runtime with CRUD operations, filtering, routing (default)
+//! - **`derive`**: Only procedural macros (ToCreateModel, ToUpdateModel, etc.) - minimal dependencies
 //! - **`sqlite`**: `SQLite` database support (default)
 //! - **`postgresql`**: `PostgreSQL` database support
 //! - **`mysql`**: `MySQL` database support
 //! - **`spring-rs`**: Spring-rs framework integration
+//!
+//! Use `features = ["derive"]` with `default-features = false` for standalone model generation
+//! without the full crudcrate runtime.
 //!
 //! ## Database Support
 //!
@@ -210,47 +213,66 @@
 //!
 //! Licensed under MIT License. See [LICENSE](https://github.com/evanjt/crudcrate/blob/main/LICENSE) for details.
 
-// Core Feature Groups
+// Core Feature Groups (only available with "full" feature)
+#[cfg(feature = "full")]
 pub mod core;
+#[cfg(feature = "full")]
 pub mod database;
+#[cfg(feature = "full")]
 pub mod errors;
+#[cfg(feature = "full")]
 pub mod filtering;
+#[cfg(feature = "full")]
 pub mod operations;
+#[cfg(feature = "full")]
 pub mod relationships;
+#[cfg(feature = "full")]
 pub mod validation;
 
 // Legacy modules for backward compatibility (re-export from new structure)
+#[cfg(feature = "full")]
 pub mod filter {
     pub use crate::filtering::conditions::*;
 }
+#[cfg(feature = "full")]
 pub mod models {
     pub use crate::filtering::query_parser::*;
 }
+#[cfg(feature = "full")]
 pub mod pagination {
     pub use crate::filtering::pagination::*;
 }
+#[cfg(feature = "full")]
 pub mod routes {
     // Legacy module for backward compatibility - CRUD handlers are now generated automatically
 }
+#[cfg(feature = "full")]
 pub mod sort {
     pub use crate::filtering::sort::*;
 }
+#[cfg(feature = "full")]
 pub mod traits {
     pub use crate::core::traits::*;
 }
 
-// Export procedural macros
+// Export procedural macros (when derive feature is enabled)
+#[cfg(feature = "derive")]
 pub use crudcrate_derive::*;
 
-// Export commonly used items from feature groups
+// Export commonly used items from feature groups (only with "full" feature)
+#[cfg(feature = "full")]
 pub use core::{CRUDResource, MergeIntoActiveModel};
+#[cfg(feature = "full")]
 pub use errors::ApiError;
+#[cfg(feature = "full")]
 pub use filtering::{
     FilterOptions, apply_filters, apply_filters_with_joins, calculate_content_range,
     parse_pagination, parse_range, parse_sorting, parse_sorting_with_joins,
     // Join filtering/sorting support
     JoinedColumnDef, JoinedFilter, FilterOperator, ParsedFilters, SortConfig, parse_dot_notation,
 };
+#[cfg(feature = "full")]
 pub use operations::{CRUDOperations, DefaultCRUDOperations};
 
+// serde_with is always available (needed for derive output)
 pub use serde_with;
